@@ -24,6 +24,8 @@
 
 #include <net_private.h>
 
+#include <../include/logging/sys_log.h>
+
 #include <gpio.h>
 
 #include <net/coap.h>
@@ -528,6 +530,7 @@ void main(void)
 
 	if (led0) {
 		gpio_pin_configure(led0, LED_PIN, GPIO_DIR_OUT);
+		gpio_pin_write(led0, LED_PIN, 0);
 	}
 
 	if (!join_coap_multicast_group()) {

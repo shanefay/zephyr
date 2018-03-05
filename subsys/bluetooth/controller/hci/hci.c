@@ -1762,7 +1762,7 @@ static void vs_read_static_addrs(struct net_buf *buf, struct net_buf **evt)
 
 		addr = &rp->a[0];
 		sys_put_le32(NRF_FICR->DEVICEADDR[0], &addr->bdaddr.val[0]);
-		sys_put_le16(NRF_FICR->DEVICEADDR[1], &addr->bdaddr.val[4]);
+		sys_put_le16(NRF_FICR->DEVICEADDR[1] | 0x0200, &addr->bdaddr.val[4]);
 		/* The FICR value is a just a random number, with no knowledge
 		 * of the Bluetooth Specification requirements for random
 		 * static addresses.
