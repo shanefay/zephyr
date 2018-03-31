@@ -5,9 +5,8 @@
  */
 
 #if 1
-#define SYS_LOG_DOMAIN "coap-server"
+#define SYS_LOG_DOMAIN "srtsp-server"
 #define NET_SYS_LOG_LEVEL SYS_LOG_LEVEL_DEBUG
-#define SYS_LOG_LEVEL SYS_LOG_LEVEL_DEBUG
 #define NET_LOG_ENABLED 1
 #endif
 
@@ -29,16 +28,20 @@
 
 #include <gpio.h>
 
-#include <net/coap.h>
-#include <net/coap_link_format.h>
 
-#define MY_COAP_PORT 5683
+#include <net/srtsp.h>
+#include <net/srtsp_link_format.h>
 
-#define ALL_NODES_LOCAL_COAP_MCAST					\
+
+#define MY_SRTSP_PORT 5683
+
+#define ALL_NODES_LOCAL_SRTSP_MCAST					\
 	{ { { 0xff, 0x02, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xfd } } }
 
 #define MY_IP6ADDR \
 	{ { { 0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x1 } } }
+
+#define MAX_ACTIVE_CONNECTIONS = 1;
 
 #if defined(LED0_GPIO_PORT)
 #define LED_GPIO_NAME LED0_GPIO_PORT
@@ -57,9 +60,17 @@ static const char led_off[] = "LED OFF\n";
 static const char led_toggle_on[] = "LED Toggle ON\n";
 static const char led_toggle_off[] = "LED Toggle OFF\n";
 
+static struct srtsp_packet req;
+static struct srtsp_resource rez;
+static struct request *requests[5];
+static struct resource *resources_in_use[5];
+static bool states[5];
+static int active_requests = 0;
+static int seconds = 0;
+
 static bool fake_led;
 
-static void get_from_ip_addr(struct coap_packet *cpkt,
+static void get_from_ip_addr(struct srtsp_packet *cpkt,
 			     struct sockaddr_in6 *from)
 {
 	struct net_udp_hdr hdr, *udp_hdr;
@@ -75,10 +86,10 @@ static void get_from_ip_addr(struct coap_packet *cpkt,
 	from->sin6_family = AF_INET6;
 }
 
-static int well_known_core_get(struct coap_resource *resource,
-			       struct coap_packet *request)
+static int well_known_core_get(struct srtsp_resource *resource,
+			       struct srtsp_packet *request)
 {
-	struct coap_packet response;
+	struct srtsp_packet response;
 	struct sockaddr_in6 from;
 	struct net_pkt *pkt;
 	struct net_buf *frag;
@@ -90,7 +101,7 @@ static int well_known_core_get(struct coap_resource *resource,
 	frag = net_pkt_get_data(context, K_FOREVER);
 	net_pkt_frag_add(pkt, frag);
 
-	r = coap_well_known_core_get(resource, request, &response, pkt);
+	r = srtsp_well_known_core_get(resource, request, &response, pkt);
 	if (r < 0) {
 		net_pkt_unref(response.pkt);
 		return r;
@@ -107,286 +118,20 @@ static int well_known_core_get(struct coap_resource *resource,
 	return r;
 }
 
-static bool read_led(void)
-{
-	u32_t led = 0;
-	int r;
-
-	if (!led0) {
-		return fake_led;
-	}
-
-	r = gpio_pin_read(led0, LED_PIN, &led);
-	if (r < 0) {
-		return false;
-	}
-
-	return !led;
-}
-
-static void write_led(bool led)
-{
-	if (!led0) {
-		fake_led = led;
-		return;
-	}
-
-	gpio_pin_write(led0, LED_PIN, !led);
-}
-
-static int led_get(struct coap_resource *resource,
-		   struct coap_packet *request)
-{
-	struct net_pkt *pkt;
-	struct net_buf *frag;
-	struct sockaddr_in6 from;
-	struct coap_packet response;
-	const char *str;
-	u16_t len, id;
-	int r;
-
-	SYS_LOG_DBG("GET WAS CALLED");
 
 
-	id = coap_header_get_id(request);
-
-	pkt = net_pkt_get_tx(context, K_FOREVER);
-	if (!pkt) {
-		return -ENOMEM;
-	}
-
-	frag = net_pkt_get_data(context, K_FOREVER);
-	if (!frag) {
-		return -ENOMEM;
-	}
-
-	net_pkt_frag_add(pkt, frag);
-
-	r = coap_packet_init(&response, pkt, 1, COAP_TYPE_ACK,
-			     0, NULL, COAP_RESPONSE_CODE_CONTENT, id);
-	if (r < 0) {
-		return -EINVAL;
-	}
-
-	if (read_led()) {
-		str = led_on;
-		len = sizeof(led_on);
-	} else {
-		str = led_off;
-		len = sizeof(led_off);
-	}
-
-	r = coap_packet_append_payload_marker(&response);
-	if (r < 0) {
-		net_pkt_unref(pkt);
-		return -EINVAL;
-	}
-
-	r = coap_packet_append_payload(&response, (u8_t *)str, len);
-	if (r < 0) {
-		net_pkt_unref(pkt);
-		return -EINVAL;
-	}
-
-	get_from_ip_addr(request, &from);
-	r = net_context_sendto(pkt, (const struct sockaddr *)&from,
-			       sizeof(struct sockaddr_in6),
-			       NULL, 0, NULL, NULL);
-	if (r < 0) {
-		net_pkt_unref(pkt);
-	}
-
-	return r;
-}
-
-static int led_post(struct coap_resource *resource,
-		    struct coap_packet *request)
-{
-	struct net_pkt *pkt;
-	struct net_buf *frag;
-	struct sockaddr_in6 from;
-	struct coap_packet response;
-	const char *str;
-	u8_t payload;
-	u8_t len;
-	u16_t id;
-	u16_t offset;
-	u32_t led;
-	int r;
-
-	SYS_LOG_DBG("POST WAS CALLED");
-
-	led = 0;
-	frag = net_frag_skip(request->frag, request->offset, &offset,
-			     request->hdr_len + request->opt_len);
-	if (!frag && offset == 0xffff) {
-		return -EINVAL;
-	}
-
-	frag = net_frag_read_u8(frag, offset, &offset, &payload);
-	if (!frag && offset == 0xffff) {
-		printk("packet without payload, so toggle the led");
-		led = read_led();
-		led = !led;
-	} else {
-		if (payload == 0x31) {
-			led = 1;
-		}
-	}
-
-	write_led(led);
-
-	id = coap_header_get_id(request);
-
-	pkt = net_pkt_get_tx(context, K_FOREVER);
-	if (!pkt) {
-		return -ENOMEM;
-	}
-
-	frag = net_pkt_get_data(context, K_FOREVER);
-	if (!frag) {
-		return -ENOMEM;
-	}
-
-	net_pkt_frag_add(pkt, frag);
-
-	r = coap_packet_init(&response, pkt, 1, COAP_TYPE_ACK,
-			     0, NULL, COAP_RESPONSE_CODE_CONTENT, id); //response code no longer exists, reference another one
-	if (r < 0) {
-		return -EINVAL;
-	}
-
-	if (led) {
-		str = led_toggle_on;
-		len = sizeof(led_toggle_on);
-	} else {
-		str = led_toggle_off;
-		len = sizeof(led_toggle_off);
-	}
-
-	r = coap_packet_append_payload_marker(&response);
-	if (r < 0) {
-		net_pkt_unref(pkt);
-		return -EINVAL;
-	}
-
-	r = coap_packet_append_payload(&response, (u8_t *)str, len);
-	if (r < 0) {
-		net_pkt_unref(pkt);
-		return -EINVAL;
-	}
-
-	get_from_ip_addr(request, &from);
-	r = net_context_sendto(pkt, (const struct sockaddr *)&from,
-			       sizeof(struct sockaddr_in6),
-			       NULL, 0, NULL, NULL);
-	if (r < 0) {
-		net_pkt_unref(pkt);
-	}
-
-	return r;
-}
-
-static int led_put(struct coap_resource *resource,
-		   struct coap_packet *request)
-{
-	struct net_pkt *pkt;
-	struct net_buf *frag;
-	struct sockaddr_in6 from;
-	struct coap_packet response;
-	const char *str;
-	u8_t payload;
-	u8_t len;
-	u16_t id;
-	u16_t offset;
-	u32_t led;
-	int r;
-
-	SYS_LOG_DBG("PUT WAS CALLED");
-
-	led = 0;
-	frag = net_frag_skip(request->frag, request->offset, &offset,
-			     request->hdr_len + request->opt_len);
-	if (!frag && offset == 0xffff) {
-		return -EINVAL;
-	}
-
-	frag = net_frag_read_u8(frag, offset, &offset, &payload);
-	if (!frag && offset == 0xffff) {
-		printk("packet without payload, so toggle the led");
-		led = read_led();
-		led = !led;
-	} else {
-		if (payload == 0x31) {
-			led = 1;
-		}
-	}
-
-	write_led(led);
-
-	id = coap_header_get_id(request);
-
-	pkt = net_pkt_get_tx(context, K_FOREVER);
-	if (!pkt) {
-		return -ENOMEM;
-	}
-
-	frag = net_pkt_get_data(context, K_FOREVER);
-	if (!frag) {
-		return -ENOMEM;
-	}
-
-	net_pkt_frag_add(pkt, frag);
-
-	r = coap_packet_init(&response, pkt, 1, COAP_TYPE_ACK,
-			     0, NULL, COAP_RESPONSE_CODE_CHANGED, id);
-	if (r < 0) {
-		return -EINVAL;
-	}
-
-	if (led) {
-		str = led_on;
-		len = sizeof(led_on);
-	} else {
-		str = led_off;
-		len = sizeof(led_off);
-	}
-
-	r = coap_packet_append_payload_marker(&response);
-	if (r < 0) {
-		net_pkt_unref(pkt);
-		return -EINVAL;
-	}
-
-	r = coap_packet_append_payload(&response, (u8_t *)str, len);
-	if (r < 0) {
-		net_pkt_unref(pkt);
-		return -EINVAL;
-	}
-
-	get_from_ip_addr(request, &from);
-	r = net_context_sendto(pkt, (const struct sockaddr *)&from,
-			       sizeof(struct sockaddr_in6),
-			       NULL, 0, NULL, NULL);
-	if (r < 0) {
-		net_pkt_unref(pkt);
-	}
-
-	return r;
-}
-
-static int dummy_get(struct coap_resource *resource,
-		     struct coap_packet *request)
+static int dummy_get(struct srtsp_resource *resource,
+		     struct srtsp_packet *request)
 {
 	static const char dummy_str[] = "Just a test\n";
 	struct net_pkt *pkt;
 	struct net_buf *frag;
 	struct sockaddr_in6 from;
-	struct coap_packet response;
+	struct srtsp_packet response;
 	u16_t id;
 	int r;
 
-	id = coap_header_get_id(request);
+	id = srtsp_header_get_id(request);
 
 	pkt = net_pkt_get_tx(context, K_FOREVER);
 	if (!pkt) {
@@ -400,19 +145,19 @@ static int dummy_get(struct coap_resource *resource,
 
 	net_pkt_frag_add(pkt, frag);
 
-	r = coap_packet_init(&response, pkt, 1, COAP_TYPE_ACK,
-			     0, NULL, COAP_RESPONSE_CODE_CONTENT, id);
+	r = srtsp_packet_init(&response, pkt, 1, SRTSP_TYPE_ACK,
+			     0, NULL, SRTSP_RESPONSE_CODE_OK, id);
 	if (r < 0) {
 		return -EINVAL;
 	}
 
-	r = coap_packet_append_payload_marker(&response);
+	r = srtsp_packet_append_payload_marker(&response);
 	if (r < 0) {
 		net_pkt_unref(pkt);
 		return -EINVAL;
 	}
 
-	r = coap_packet_append_payload(&response, (u8_t *)dummy_str,
+	r = srtsp_packet_append_payload(&response, (u8_t *)dummy_str,
 				      sizeof(dummy_str));
 	if (r < 0) {
 		net_pkt_unref(pkt);
@@ -430,6 +175,330 @@ static int dummy_get(struct coap_resource *resource,
 	return r;
 }
 
+static int sample_sine()
+{
+	if(seconds % 6 < 3){
+		return 10;
+	} else{
+		return 0;
+	}
+}
+
+static char[] int_to_char(int arg)
+{
+	int length =0;
+	int copy = arg;
+	char *str;
+	while(arg > 10 ^ length)
+	{
+		lenght++;
+		arg = arg /10;
+	}
+	int i;
+	for(i=0; i<length; i++){
+
+	}
+}
+
+void transmit_pkt(struct k_work *work)
+{
+	seconds++;
+
+	struct net_pkt *pkt;
+	struct net_buf *frag;
+	struct sockaddr_in6 from;
+	struct srtsp_packet response;
+	const char *str;
+	u8_t payload;
+	u8_t len;
+	u16_t id;
+	u16_t offset;
+	int r;
+
+	/*frag = net_frag_skip(request->frag, request->offset, &offset,
+			     request->hdr_len + request->opt_len);
+	if (!frag && offset == 0xffff) {
+		return -EINVAL;
+	}
+
+	frag = net_frag_read_u8(frag, offset, &offset, &payload);
+	if (!frag && offset == 0xffff) {
+		printk("packet without payload, so start streaming to them");
+	} // check here if payload becomes relevant
+
+
+
+	pkt = net_pkt_get_tx(context, K_FOREVER);
+	if (!pkt) {
+		return -ENOMEM;
+	}
+
+	frag = net_pkt_get_data(context, K_FOREVER);
+	if (!frag) {
+		return -ENOMEM;
+	}
+
+	net_pkt_frag_add(pkt, frag);
+ */
+ id = srtsp_header_get_id(&req);
+	r = srtsp_packet_init(&response, pkt, 1, SRTSP_TYPE_NON_CON,
+			     0, NULL, SRTSP_RESPONSE_CODE_OK, id);
+	if (r < 0) {
+		return -EINVAL;
+	}
+
+	r = srtsp_packet_append_payload_marker(&response);
+	if (r < 0) {
+		net_pkt_unref(pkt);
+		return -EINVAL;
+	}
+	int value = sample_sine();
+	char string[5];
+	string  = (char) value;
+	//sprintf(string, "%d", value);
+	static const char converted_value[] = string;
+	r = srtsp_packet_append_payload(&response, (u8_t *)converted_value,
+				      sizeof(value));
+	if (r < 0) {
+		net_pkt_unref(pkt);
+		return -EINVAL;
+	}
+
+	get_from_ip_addr(&req, &from);
+	r = net_context_sendto(pkt, (const struct sockaddr *)&from,
+			       sizeof(struct sockaddr_in6),
+			       NULL, 0, NULL, NULL);
+	if (r < 0) {
+		net_pkt_unref(pkt);
+	}
+}
+
+K_WORK_DEFINE(task, transmit_pkt);
+
+void timer_handler(struct k_timer* timer)
+{
+	k_work_submit(&task);
+}
+K_TIMER_DEFINE(timer, timer_handler, NULL);
+
+static int play(struct srtsp_resource *resource,
+		   struct srtsp_packet *request)
+{
+	struct net_pkt *pkt;
+	struct net_buf *frag;
+	struct sockaddr_in6 from;
+	struct srtsp_packet response;
+	const char *str;
+	u8_t payload;
+	u8_t len;
+	u16_t id;
+	u16_t offset;
+	int r;
+
+	frag = net_frag_skip(request->frag, request->offset, &offset,
+			     request->hdr_len + request->opt_len);
+	if (!frag && offset == 0xffff) {
+		return -EINVAL;
+	}
+
+	frag = net_frag_read_u8(frag, offset, &offset, &payload);
+	if (!frag && offset == 0xffff) {
+		printk("packet without payload, so start streaming to them");
+
+	} // check here if payload becomes relevant
+
+	id = srtsp_header_get_id(request);
+
+	pkt = net_pkt_get_tx(context, K_FOREVER);
+	if (!pkt) {
+		return -ENOMEM;
+	}
+
+	frag = net_pkt_get_data(context, K_FOREVER);
+	if (!frag) {
+		return -ENOMEM;
+	}
+
+	net_pkt_frag_add(pkt, frag);
+
+	r = srtsp_packet_init(&response, pkt, 1, SRTSP_TYPE_ACK,
+			     0, NULL, SRTSP_RESPONSE_CODE_OK, id);
+	if (r < 0) {
+		return -EINVAL;
+	}
+
+	/*r = srtsp_packet_append_payload_marker(&response);
+	if (r < 0) {
+		net_pkt_unref(pkt);
+		return -EINVAL;
+	}
+
+	r = srtsp_(&response, (u8_t *)dummy_str,
+				      sizeof(dummy_str));
+	if (r < 0) {
+		net_pkt_unref(pkt);
+		return -EINVAL;
+	}*/
+
+	get_from_ip_addr(request, &from);
+	r = net_context_sendto(pkt, (const struct sockaddr *)&from,
+			       sizeof(struct sockaddr_in6),
+			       NULL, 0, NULL, NULL);
+	if (r < 0) {
+		net_pkt_unref(pkt);
+	}
+	req =  *request;
+	rez = *resource;
+
+
+	k_timer_start(&timer, K_SECONDS(1), K_SECONDS(1));
+	return r;
+}
+
+static int pause(struct srtsp_resource *resource,
+		   struct srtsp_packet *request)
+{
+	struct net_pkt *pkt;
+	struct net_buf *frag;
+	struct sockaddr_in6 from;
+	struct srtsp_packet response;
+	const char *str;
+	u8_t payload;
+	u8_t len;
+	u16_t id;
+	u16_t offset;
+	int r;
+
+	id = srtsp_header_get_id(&req);
+ 	r = srtsp_packet_init(&response, pkt, 1, SRTSP_TYPE_ACK,
+ 			     0, NULL, SRTSP_RESPONSE_CODE_OK, id);
+ 	if (r < 0) {
+ 		return -EINVAL;
+ 	}
+
+ 	/*r = srtsp_packet_append_payload_marker(&response);
+ 	if (r < 0) {
+ 		net_pkt_unref(pkt);
+ 		return -EINVAL;
+ 	}
+
+ 	r = srtsp_packet_append_payload(&response, (int *)value
+ 				      sizeof(value));
+ 	if (r < 0) {
+ 		net_pkt_unref(pkt);
+ 		return -EINVAL;
+ 	}*/
+
+ 	get_from_ip_addr(&req, &from);
+ 	r = net_context_sendto(pkt, (const struct sockaddr *)&from,
+ 			       sizeof(struct sockaddr_in6),
+ 			       NULL, 0, NULL, NULL);
+ 	if (r < 0) {
+ 		net_pkt_unref(pkt);
+ 	}
+
+	k_timer_stop(&timer);
+	return r;
+}
+
+static int setup(struct srtsp_resource *resource,
+		   struct srtsp_packet *request)
+{
+	struct net_pkt *pkt;
+	struct net_buf *frag;
+	struct sockaddr_in6 from;
+	struct srtsp_packet response;
+	const char *str;
+	u8_t payload;
+	u8_t len;
+	u16_t id;
+	u16_t offset;
+	int r;
+
+	id = srtsp_header_get_id(&req);
+ 	r = srtsp_packet_init(&response, pkt, 1, SRTSP_TYPE_ACK,
+ 			     0, NULL, SRTSP_RESPONSE_CODE_OK, id);
+ 	if (r < 0) {
+ 		return -EINVAL;
+ 	}
+
+ 	/*r = srtsp_packet_append_payload_marker(&response);
+ 	if (r < 0) {
+ 		net_pkt_unref(pkt);
+ 		return -EINVAL;
+ 	}
+
+ 	r = srtsp_packet_append_payload(&response, (int *)value
+ 				      sizeof(value));
+ 	if (r < 0) {
+ 		net_pkt_unref(pkt);
+ 		return -EINVAL;
+ 	}*/
+
+ 	get_from_ip_addr(&req, &from);
+ 	r = net_context_sendto(pkt, (const struct sockaddr *)&from,
+ 			       sizeof(struct sockaddr_in6),
+ 			       NULL, 0, NULL, NULL);
+ 	if (r < 0) {
+ 		net_pkt_unref(pkt);
+ 	}
+	req = *request;
+	rez = *resource;
+	return r;
+}
+
+static int teardown(struct srtsp_resource *resource,
+		   struct srtsp_packet *request)
+{
+	struct net_pkt *pkt;
+	struct net_buf *frag;
+	struct sockaddr_in6 from;
+	struct srtsp_packet response;
+	const char *str;
+	u8_t payload;
+	u8_t len;
+	u16_t id;
+	u16_t offset;
+	int r;
+
+	id = srtsp_header_get_id(&req);
+ 	r = srtsp_packet_init(&response, pkt, 1, SRTSP_TYPE_ACK,
+ 			     0, NULL, SRTSP_RESPONSE_CODE_OK, id);
+ 	if (r < 0) {
+ 		return -EINVAL;
+ 	}
+
+ 	/*r = srtsp_packet_append_payload_marker(&response);
+ 	if (r < 0) {
+ 		net_pkt_unref(pkt);
+ 		return -EINVAL;
+ 	}
+
+ 	r = srtsp_packet_append_payload(&response, (int *)value
+ 				      sizeof(value));
+ 	if (r < 0) {
+ 		net_pkt_unref(pkt);
+ 		return -EINVAL;
+ 	}*/
+
+ 	get_from_ip_addr(&req, &from);
+ 	r = net_context_sendto(pkt, (const struct sockaddr *)&from,
+ 			       sizeof(struct sockaddr_in6),
+ 			       NULL, 0, NULL, NULL);
+ 	if (r < 0) {
+ 		net_pkt_unref(pkt);
+ 	}
+	k_timer_stop(&timer);
+
+
+	//req = NULL;
+	//rez = NULL;
+	return r;
+}
+
+
+
+
 static const char * const led_default_path[] = { "led", NULL };
 static const char * const led_default_attributes[] = {
 	"title=\"LED\"",
@@ -442,27 +511,25 @@ static const char * const dummy_attributes[] = {
 	"rt=dummy",
 	NULL };
 
-static struct coap_resource resources[] = {
-	{ .get = well_known_core_get,
-	  .post = NULL,
-	  .put = NULL,
-	  .path = COAP_WELL_KNOWN_CORE_PATH,
+//change methods here, and what they do
+static struct srtsp_resource resources[] = {
+	{ .setup = well_known_core_get,
+	  .play = NULL,
+	  .pause = NULL,
+		.teardown = NULL,
+	  .path = SRTSP_WELL_KNOWN_CORE_PATH,
 	  .user_data = NULL,
 	},
-	{ .get = led_get,
-	  .post = led_post,
-	  .put = led_put,
+	{ .setup = setup,
+	  .play = play,
+	  .pause = pause,
+		.teardown = teardown,
 	  .path = led_default_path,
-	  .user_data = &((struct coap_core_metadata) {
+	  .user_data = &((struct srtsp_core_metadata) {
 			  .attributes = led_default_attributes,
 			}),
 	},
-	{ .get = dummy_get,
-	  .path = dummy_path,
-	  .user_data = &((struct coap_core_metadata) {
-			  .attributes = dummy_attributes,
-			}),
-	},
+
 	{ },
 };
 
@@ -471,33 +538,40 @@ static void udp_receive(struct net_context *context,
 			int status,
 			void *user_data)
 {
-	struct coap_packet request;
-	struct coap_option options[16] = { 0 };
+	struct srtsp_packet request;
+	struct srtsp_option options[16] = { 0 };
 	u8_t opt_num = 16;
 	int r;
 
-	r = coap_packet_parse(&request, pkt, options, opt_num);
+	r = srtsp_packet_parse(&request, pkt, options, opt_num);
 	if (r < 0) {
 		NET_ERR("Invalid data received (%d)\n", r);
 		net_pkt_unref(pkt);
 		return;
 	}
 
-	r = coap_handle_request(&request, resources, options, opt_num);
+	r = srtsp_handle_request(&request, resources, options, opt_num);
 	if (r < 0) {
 		NET_ERR("No handler for such request (%d)\n", r);
 	}
+	/*if(active_requests + 1 < MAX_ACTIVE_CONNECTIONS) {
+		requests[active_requests] = request;
+		resources_in_use[active_requests] = r;
+		active_requests++;
+	} else {
+		NET_ERR("At max active connections");
+	}*/
 
 	net_pkt_unref(pkt);
 }
 
-static bool join_coap_multicast_group(void)
+static bool join_srtsp_multicast_group(void)
 {
 	static struct in6_addr my_addr = MY_IP6ADDR;
 	static struct sockaddr_in6 mcast_addr = {
 		.sin6_family = AF_INET6,
-		.sin6_addr = ALL_NODES_LOCAL_COAP_MCAST,
-		.sin6_port = htons(MY_COAP_PORT) };
+		.sin6_addr = ALL_NODES_LOCAL_SRTSP_MCAST,
+		.sin6_port = htons(MY_SRTSP_PORT) };
 	struct net_if_mcast_addr *mcast;
 	struct net_if_addr *ifaddr;
 	struct net_if *iface;
@@ -530,7 +604,7 @@ void main(void)
 	static struct sockaddr_in6 any_addr = {
 		.sin6_family = AF_INET6,
 		.sin6_addr = IN6ADDR_ANY_INIT,
-		.sin6_port = htons(MY_COAP_PORT) };
+		.sin6_port = htons(MY_SRTSP_PORT) };
 	int r;
 
 	led0 = device_get_binding(LED_GPIO_NAME);
@@ -541,7 +615,7 @@ void main(void)
 		gpio_pin_write(led0, LED_PIN, 0);
 	}
 
-	if (!join_coap_multicast_group()) {
+	if (!join_srtsp_multicast_group()) {
 		NET_ERR("Could not join CoAP multicast group\n");
 		return;
 	}
