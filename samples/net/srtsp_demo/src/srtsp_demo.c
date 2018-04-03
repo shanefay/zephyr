@@ -25,6 +25,7 @@
 #include <net_private.h>
 
 #include <../include/logging/sys_log.h>
+#include <kernel.h>
 
 #include <gpio.h>
 
@@ -55,17 +56,12 @@ static struct net_context *context;
 
 static struct device *led0;
 
-static const char led_on[] = "LED ON\n";
-static const char led_off[] = "LED OFF\n";
-static const char led_toggle_on[] = "LED Toggle ON\n";
-static const char led_toggle_off[] = "LED Toggle OFF\n";
-
 static struct srtsp_packet req;
 static struct srtsp_resource rez;
-static struct request *requests[5];
-static struct resource *resources_in_use[5];
-static bool states[5];
-static int active_requests = 0;
+//static struct request *requests[5];
+//static struct resource *resources_in_use[5];
+//static bool states[5];
+//static int active_requests = 0;
 static int seconds = 0;
 
 static bool fake_led;
@@ -184,20 +180,23 @@ static int sample_sine()
 	}
 }
 
-static char[] int_to_char(int arg)
+char* int_to_char(int arg)
 {
-	int length =0;
+	int length = 0;
 	int copy = arg;
-	char *str;
 	while(arg > 10 ^ length)
 	{
-		lenght++;
-		arg = arg /10;
+		length++;
 	}
 	int i;
+	char *str=k_malloc((length+1) * sizeof(char));
 	for(i=0; i<length; i++){
-
+    int temp = copy % 10;
+		str[length-(i+1)] = '0' + temp % 10;
+		copy = copy / 10;
 	}
+	str[length]='\0';
+	return str;
 }
 
 void transmit_pkt(struct k_work *work)
@@ -244,24 +243,22 @@ void transmit_pkt(struct k_work *work)
 	r = srtsp_packet_init(&response, pkt, 1, SRTSP_TYPE_NON_CON,
 			     0, NULL, SRTSP_RESPONSE_CODE_OK, id);
 	if (r < 0) {
-		return -EINVAL;
+		return;
 	}
 
 	r = srtsp_packet_append_payload_marker(&response);
 	if (r < 0) {
 		net_pkt_unref(pkt);
-		return -EINVAL;
+		return ;
 	}
 	int value = sample_sine();
-	char string[5];
-	string  = (char) value;
 	//sprintf(string, "%d", value);
-	static const char converted_value[] = string;
+	char *converted_value = int_to_char(value);
 	r = srtsp_packet_append_payload(&response, (u8_t *)converted_value,
 				      sizeof(value));
 	if (r < 0) {
 		net_pkt_unref(pkt);
-		return -EINVAL;
+		return;
 	}
 
 	get_from_ip_addr(&req, &from);
@@ -271,6 +268,7 @@ void transmit_pkt(struct k_work *work)
 	if (r < 0) {
 		net_pkt_unref(pkt);
 	}
+	k_free(value);
 }
 
 K_WORK_DEFINE(task, transmit_pkt);
@@ -505,11 +503,7 @@ static const char * const led_default_attributes[] = {
 	"rt=Text",
 	NULL };
 
-static const char * const dummy_path[] = { "dummy", NULL };
-static const char * const dummy_attributes[] = {
-	"title=\"Dummy\"",
-	"rt=dummy",
-	NULL };
+
 
 //change methods here, and what they do
 static struct srtsp_resource resources[] = {

@@ -294,8 +294,8 @@ static int parse_options(const struct srtsp_packet *cpkt,
 }
 
 
-//gets the 4 reserved bits that come after version and type in the ehader
-static u8_t get_header_reserved_bits(const struct srtsp_packet *cpkt)
+//gets the 4 reserved bits that come after version and type in the header
+u8_t get_header_reserved_bits(const struct srtsp_packet *cpkt)
 {
 	struct net_buf *frag;
 	u16_t offset;
@@ -386,6 +386,11 @@ int srtsp_packet_parse(struct srtsp_packet *cpkt, struct net_pkt *pkt,
 	cpkt->opt_len = ret;
 
 	return 0;
+}
+
+static u32_t get_timestamp()
+{
+	return k_uptime_get_32();
 }
 
 int srtsp_packet_init(struct srtsp_packet *cpkt, struct net_pkt *pkt,
@@ -845,7 +850,7 @@ void srtsp_observer_init(struct srtsp_observer *observer,
 
 	timestamp_size = srtsp_header_get_timestamp(request, (u8_t *)&timestamp);
 
-	if (timestamp_size) > 0) {
+	if (timestamp_size > 0) {
 		memcpy(observer->token, timestamp, timestamp_size);
 	}
 
@@ -934,10 +939,7 @@ struct srtsp_observer *srtsp_find_observer_by_addr(
 
 //get the uptime in milliseconds - this functions as the timestamp until such
 //a point that sntp is integrated
-static u32_t get_timestamp()
-{
-	return k_uptime_get_32();
-}
+
 
 int srtsp_packet_append_payload_marker(struct srtsp_packet *cpkt)
 {
@@ -1230,7 +1232,7 @@ u8_t srtsp_header_get_code(const struct srtsp_packet *cpkt)
 	case SRTSP_RESPONSE_CODE_NOT_ALLOWED:
 	case SRTSP_RESPONSE_CODE_NOT_ACCEPTABLE:
 	case SRTSP_RESPONSE_CODE_REQUEST_TIMEOUT:
-	case SRTSP_RESPONSE_CODE_Gone:
+	case SRTSP_RESPONSE_CODE_GONE:
 	case SRTSP_RESPONSE_CODE_PRECONDITION_FAILED:
 	case SRTSP_RESPONSE_CODE_REQUEST_TOO_LARGE:
 	case SRTSP_RESPONSE_CODE_URI_TO_LONG:
@@ -1242,7 +1244,6 @@ u8_t srtsp_header_get_code(const struct srtsp_packet *cpkt)
 	case SRTSP_RESPONSE_CODE_SERVICE_UNAVAILABLE:
 	case SRTSP_RESPONSE_CODE_GATEWAY_TIMEOUT:
 	case SRTSP_RESPONSE_CODE_PROXYING_NOT_SUPPORTED:
-	case SRTSP_CODE_EMPTY:
 		return code;
 	default:
 		return SRTSP_CODE_EMPTY;

@@ -4,8 +4,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#if defined(CONFIG_NET_DEBUG_COAP)
-#define SYS_LOG_DOMAIN "coap"
+#if defined(CONFIG_NET_DEBUG_SRTSP)
+#define SYS_LOG_DOMAIN "srtsp"
 #define NET_LOG_ENABLED 1
 #endif
 
@@ -22,8 +22,8 @@
 
 #include <misc/printk.h>
 
-#include <net/coap.h>
-#include <net/coap_link_format.h>
+#include <net/srtsp.h>
+#include <net/srtsp_link_format.h>
 
 #define PKT_WAIT_TIME K_SECONDS(1)
 
@@ -92,7 +92,7 @@ next:
 }
 
 static bool match_attributes(const char * const *attributes,
-			     const struct coap_option *query)
+			     const struct srtsp_option *query)
 {
 	const char * const *attr;
 
@@ -115,11 +115,11 @@ static bool match_attributes(const char * const *attributes,
 	return false;
 }
 
-static bool match_queries_resource(const struct coap_resource *resource,
-				   const struct coap_option *query,
+static bool match_queries_resource(const struct srtsp_resource *resource,
+				   const struct srtsp_option *query,
 				   int num_queries)
 {
-	struct coap_core_metadata *meta = resource->user_data;
+	struct srtsp_core_metadata *meta = resource->user_data;
 	const char * const *attributes = NULL;
 	const int href_len = strlen("href");
 
@@ -147,30 +147,30 @@ static bool match_queries_resource(const struct coap_resource *resource,
 	return match_attributes(attributes, query);
 }
 
-#if defined(CONFIG_COAP_WELL_KNOWN_BLOCK_WISE)
+#if defined(CONFIG_SRTSP_WELL_KNOWN_BLOCK_WISE)
 
 #define MAX_BLOCK_WISE_TRANSFER_SIZE 2048
 
-enum coap_block_size default_block_size(void)
+enum srtsp_block_size default_block_size(void)
 {
-	switch (CONFIG_COAP_WELL_KNOWN_BLOCK_WISE_SIZE) {
+	switch (CONFIG_SRTSP_WELL_KNOWN_BLOCK_WISE_SIZE) {
 	case 16:
-		return COAP_BLOCK_16;
+		return SRTSP_BLOCK_16;
 	case 32:
-		return COAP_BLOCK_32;
+		return SRTSP_BLOCK_32;
 	case 64:
-		return COAP_BLOCK_64;
+		return SRTSP_BLOCK_64;
 	case 128:
-		return COAP_BLOCK_128;
+		return SRTSP_BLOCK_128;
 	case 256:
-		return COAP_BLOCK_256;
+		return SRTSP_BLOCK_256;
 	case 512:
-		return COAP_BLOCK_512;
+		return SRTSP_BLOCK_512;
 	case 1024:
-		return COAP_BLOCK_1024;
+		return SRTSP_BLOCK_1024;
 	}
 
-	return COAP_BLOCK_64;
+	return SRTSP_BLOCK_64;
 }
 
 static bool append_to_net_pkt(struct net_pkt *pkt, const char *str, u16_t len,
@@ -336,12 +336,12 @@ terminator:
 	return 0;
 }
 
-static int format_resource(const struct coap_resource *resource,
+static int format_resource(const struct srtsp_resource *resource,
 			   struct net_pkt *pkt,
 			   u16_t *remaining, size_t *offset,
 			   size_t current, bool *more)
 {
-	struct coap_core_metadata *meta = resource->user_data;
+	struct srtsp_core_metadata *meta = resource->user_data;
 	const char * const *attributes = NULL;
 	int r;
 
@@ -363,7 +363,7 @@ static int format_resource(const struct coap_resource *resource,
 				 more);
 }
 
-int clear_more_flag(struct coap_packet *cpkt)
+int clear_more_flag(struct srtsp_packet *cpkt)
 {
 	struct net_buf *frag;
 	u16_t offset;
@@ -377,7 +377,7 @@ int clear_more_flag(struct coap_packet *cpkt)
 	}
 
 	delta = 0;
-	/* Note: coap_well_known_core_get() added Option (delta and len) witho
+	/* Note: srtsp_well_known_core_get() added Option (delta and len) witho
 	 * out any extended options so parsing will not consider at the moment.
 	 */
 	while (1) {
@@ -389,7 +389,7 @@ int clear_more_flag(struct coap_packet *cpkt)
 		delta += ((opt & 0xF0) >> 4);
 		len = (opt & 0xF);
 
-		if (delta == COAP_OPTION_BLOCK2) {
+		if (delta == SRTSP_OPTION_BLOCK2) {
 			break;
 		}
 
@@ -414,13 +414,13 @@ int clear_more_flag(struct coap_packet *cpkt)
 	return 0;
 }
 
-int coap_well_known_core_get(struct coap_resource *resource,
-			      struct coap_packet *request,
-			      struct coap_packet *response,
+int srtsp_well_known_core_get(struct srtsp_resource *resource,
+			      struct srtsp_packet *request,
+			      struct srtsp_packet *response,
 			      struct net_pkt *pkt)
 {
-	static struct coap_block_context ctx;
-	struct coap_option query;
+	static struct srtsp_block_context ctx;
+	struct srtsp_option query;
 	unsigned int num_queries;
 	size_t offset;
 	u8_t token[8];
@@ -437,54 +437,54 @@ int coap_well_known_core_get(struct coap_resource *resource,
 		 * MAX_BLOCK_WISE_TRANSFER_SIZE and update it according to
 		 * offset.
 		 */
-		coap_block_transfer_init(&ctx, default_block_size(),
+		srtsp_block_transfer_init(&ctx, default_block_size(),
 					 MAX_BLOCK_WISE_TRANSFER_SIZE);
 	}
 
-	r = coap_update_from_block(request, &ctx);
+	r = srtsp_update_from_block(request, &ctx);
 	if (r < 0) {
 		goto end;
 	}
 
-	id = coap_header_get_id(request);
-	tkl = coap_header_get_token(request, token);
+	id = srtsp_header_get_id(request);
+	tkl = srtsp_header_get_token(request, token);
 
 	/* Per RFC 6690, Section 4.1, only one (or none) query parameter may be
 	 * provided, use the first if multiple.
 	 */
-	r = coap_find_options(request, COAP_OPTION_URI_QUERY, &query, 1);
+	r = srtsp_find_options(request, SRTSP_OPTION_URI_QUERY, &query, 1);
 	if (r < 0) {
 		goto end;
 	}
 
 	num_queries = r;
 
-	r = coap_packet_init(response, pkt, 1, COAP_TYPE_ACK,
-			     tkl, token, COAP_RESPONSE_CODE_CONTENT, id);
+	r = srtsp_packet_init(response, pkt, 1, SRTSP_TYPE_ACK,
+			     tkl, token, SRTSP_RESPONSE_CODE_CONTENT, id);
 	if (r < 0) {
 		goto end;
 	}
 
 	format = 40; /* application/link-format */
 
-	r = coap_packet_append_option(response, COAP_OPTION_CONTENT_FORMAT,
+	r = srtsp_packet_append_option(response, SRTSP_OPTION_CONTENT_FORMAT,
 				      &format, sizeof(format));
 	if (r < 0) {
 		goto end;
 	}
 
-	r = coap_append_block2_option(response, &ctx);
+	r = srtsp_append_block2_option(response, &ctx);
 	if (r < 0) {
 		goto end;
 	}
 
-	r = coap_packet_append_payload_marker(response);
+	r = srtsp_packet_append_payload_marker(response);
 	if (r < 0) {
 		goto end;
 	}
 
 	offset = 0;
-	remaining = coap_block_size_to_bytes(ctx.block_size);
+	remaining = srtsp_block_size_to_bytes(ctx.block_size);
 
 	while (resource++ && resource->path) {
 		if (!remaining) {
@@ -585,10 +585,10 @@ terminator:
 	return 0;
 }
 
-static int format_resource(const struct coap_resource *resource,
+static int format_resource(const struct srtsp_resource *resource,
 			   struct net_pkt *pkt)
 {
-	struct coap_core_metadata *meta = resource->user_data;
+	struct srtsp_core_metadata *meta = resource->user_data;
 	const char * const *attributes = NULL;
 	int r;
 
@@ -604,12 +604,12 @@ static int format_resource(const struct coap_resource *resource,
 	return format_attributes(attributes, pkt);
 }
 
-int coap_well_known_core_get(struct coap_resource *resource,
-			     struct coap_packet *request,
-			     struct coap_packet *response,
+int srtsp_well_known_core_get(struct srtsp_resource *resource,
+			     struct srtsp_packet *request,
+			     struct srtsp_packet *response,
 			     struct net_pkt *pkt)
 {
-	struct coap_option query;
+	struct srtsp_option query;
 	u8_t token[8];
 	u16_t id;
 	u8_t tkl;
@@ -621,33 +621,33 @@ int coap_well_known_core_get(struct coap_resource *resource,
 		return -EINVAL;
 	}
 
-	id = coap_header_get_id(request);
-	tkl = coap_header_get_token(request, token);
+	id = srtsp_header_get_id(request);
+	tkl = get_header_reserved_bits(request);
 
 	/* Per RFC 6690, Section 4.1, only one (or none) query parameter may be
 	 * provided, use the first if multiple.
 	 */
-	r = coap_find_options(request, COAP_OPTION_URI_QUERY, &query, 1);
+	r = srtsp_find_options(request, SRTSP_OPTION_URI_QUERY, &query, 1);
 	if (r < 0) {
 		return r;
 	}
 
 	num_queries = r;
 
-	r = coap_packet_init(response, pkt, 1, COAP_TYPE_ACK,
-			     tkl, token, COAP_RESPONSE_CODE_CONTENT, id);
+	r = srtsp_packet_init(response, pkt, 1, SRTSP_TYPE_ACK,
+			     tkl, token, SRTSP_RESPONSE_CODE_OK, id);
 	if (r < 0) {
 		return r;
 	}
 
 	format = 40; /* application/link-format */
-	r = coap_packet_append_option(response, COAP_OPTION_CONTENT_FORMAT,
+	r = srtsp_packet_append_option(response, SRTSP_OPTION_CONTENT_FORMAT,
 				      &format, sizeof(format));
 	if (r < 0) {
 		return -EINVAL;
 	}
 
-	r = coap_packet_append_payload_marker(response);
+	r = srtsp_packet_append_payload_marker(response);
 	if (r < 0) {
 		return -EINVAL;
 	}
@@ -667,9 +667,9 @@ int coap_well_known_core_get(struct coap_resource *resource,
 }
 #endif
 
-/* Exposing some of the APIs to CoAP unit tests in tests/net/lib/coap */
-#if defined(CONFIG_COAP_TEST_API_ENABLE)
-bool _coap_match_path_uri(const char * const *path,
+/* Exposing some of the APIs to CoAP unit tests in tests/net/lib/srtsp */
+#if defined(CONFIG_SRTSP_TEST_API_ENABLE)
+bool _srtsp_match_path_uri(const char * const *path,
 			  const char *uri, u16_t len)
 {
 	return match_path_uri(path, uri, len);

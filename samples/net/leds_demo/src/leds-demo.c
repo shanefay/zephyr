@@ -25,7 +25,8 @@
 
 #include <net_private.h>
 
-#include <../include/logging/sys_log.h>
+#include <logging/sys_log.h>
+
 
 #include <gpio.h>
 

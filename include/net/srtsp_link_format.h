@@ -18,7 +18,7 @@ extern "C" {
 #endif
 
 /**
- * @addtogroup coap COAP Library
+ * @addtogroup srtsp SRTSP Library
  * @{
  */
 /**
@@ -36,7 +36,7 @@ int srtsp_well_known_core_get(struct srtsp_resource *resource,
 /**
  * In case you want to add attributes to the resources included in the
  * 'well-known/core' "virtual" resource, the 'user_data' field should point
- * to a valid coap_core_metadata structure.
+ * to a valid srtsp_core_metadata structure.
  */
 struct srtsp_core_metadata {
 	const char * const *attributes;

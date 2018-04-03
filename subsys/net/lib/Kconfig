@@ -18,6 +18,8 @@ source "subsys/net/lib/lwm2m/Kconfig"
 
 source "subsys/net/lib/sntp/Kconfig"
 
+source "subsys/net/lib/srtsp/Kconfig"
+
 endmenu
 
 menu "Network Application Support"

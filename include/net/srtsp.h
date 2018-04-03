@@ -768,6 +768,11 @@ u8_t srtsp_header_get_timestamp(const struct srtsp_packet *cpkt, u8_t *token);
  */
 u8_t srtsp_header_get_code(const struct srtsp_packet *cpkt);
 
+
+/*get the  reserbed bits after the version and the code, and return them
+*/
+ u8_t get_header_reserved_bits(const struct srtsp_packet *cpkt);
+
 /**
  * @brief Returns the message id associated with the CoAP packet.
  *
@@ -813,6 +818,8 @@ struct net_buf *srtsp_packet_get_payload(const struct srtsp_packet *cpkt,
  * @return a 8-byte pseudo-random token.
  */
 u8_t *srtsp_next_token(void);
+
+char* int_to_char(int arg);
 
 /**
  * @}
