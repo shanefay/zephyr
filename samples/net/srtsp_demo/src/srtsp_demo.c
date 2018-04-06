@@ -34,7 +34,7 @@
 #include <net/srtsp_link_format.h>
 
 
-#define MY_SRTSP_PORT 5683
+#define MY_SRTSP_PORT 50000
 
 #define ALL_NODES_LOCAL_SRTSP_MCAST					\
 	{ { { 0xff, 0x02, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xfd } } }
@@ -64,7 +64,6 @@ static struct srtsp_resource rez;
 //static int active_requests = 0;
 static int seconds = 0;
 
-static bool fake_led;
 
 static void get_from_ip_addr(struct srtsp_packet *cpkt,
 			     struct sockaddr_in6 *from)
@@ -184,7 +183,7 @@ char* int_to_char(int arg)
 {
 	int length = 0;
 	int copy = arg;
-	while(arg > 10 ^ length)
+	while(arg > (10 ^ length))
 	{
 		length++;
 	}
@@ -207,11 +206,8 @@ void transmit_pkt(struct k_work *work)
 	struct net_buf *frag;
 	struct sockaddr_in6 from;
 	struct srtsp_packet response;
-	const char *str;
-	u8_t payload;
-	u8_t len;
 	u16_t id;
-	u16_t offset;
+//	u16_t offset;
 	int r;
 
 	/*frag = net_frag_skip(request->frag, request->offset, &offset,
@@ -226,19 +222,18 @@ void transmit_pkt(struct k_work *work)
 	} // check here if payload becomes relevant
 
 
-
-	pkt = net_pkt_get_tx(context, K_FOREVER);
-	if (!pkt) {
-		return -ENOMEM;
-	}
-
-	frag = net_pkt_get_data(context, K_FOREVER);
-	if (!frag) {
-		return -ENOMEM;
-	}
-
-	net_pkt_frag_add(pkt, frag);
  */
+ pkt = net_pkt_get_tx(context, K_FOREVER);
+ if (!pkt) {
+	 return;
+ }
+
+ frag = net_pkt_get_data(context, K_FOREVER);
+ if (!frag) {
+	 return;
+ }
+
+ net_pkt_frag_add(pkt, frag);
  id = srtsp_header_get_id(&req);
 	r = srtsp_packet_init(&response, pkt, 1, SRTSP_TYPE_NON_CON,
 			     0, NULL, SRTSP_RESPONSE_CODE_OK, id);
@@ -268,7 +263,8 @@ void transmit_pkt(struct k_work *work)
 	if (r < 0) {
 		net_pkt_unref(pkt);
 	}
-	k_free(value);
+	u8_t * temp = (u8_t*) &value;
+	k_free(temp);
 }
 
 K_WORK_DEFINE(task, transmit_pkt);
@@ -286,9 +282,7 @@ static int play(struct srtsp_resource *resource,
 	struct net_buf *frag;
 	struct sockaddr_in6 from;
 	struct srtsp_packet response;
-	const char *str;
 	u8_t payload;
-	u8_t len;
 	u16_t id;
 	u16_t offset;
 	int r;
@@ -360,13 +354,19 @@ static int pause(struct srtsp_resource *resource,
 	struct net_buf *frag;
 	struct sockaddr_in6 from;
 	struct srtsp_packet response;
-	const char *str;
-	u8_t payload;
-	u8_t len;
 	u16_t id;
-	u16_t offset;
+	//u16_t offset;
 	int r;
 
+	pkt = net_pkt_get_tx(context, K_FOREVER);
+	if (!pkt) {
+		return -ENOMEM;
+	}
+
+	frag = net_pkt_get_data(context, K_FOREVER);
+	if (!frag) {
+		return -ENOMEM;
+	}
 	id = srtsp_header_get_id(&req);
  	r = srtsp_packet_init(&response, pkt, 1, SRTSP_TYPE_ACK,
  			     0, NULL, SRTSP_RESPONSE_CODE_OK, id);
@@ -386,6 +386,9 @@ static int pause(struct srtsp_resource *resource,
  		net_pkt_unref(pkt);
  		return -EINVAL;
  	}*/
+
+
+	net_pkt_frag_add(pkt, frag);
 
  	get_from_ip_addr(&req, &from);
  	r = net_context_sendto(pkt, (const struct sockaddr *)&from,
@@ -406,13 +409,19 @@ static int setup(struct srtsp_resource *resource,
 	struct net_buf *frag;
 	struct sockaddr_in6 from;
 	struct srtsp_packet response;
-	const char *str;
-	u8_t payload;
-	u8_t len;
 	u16_t id;
-	u16_t offset;
 	int r;
+	SYS_LOG_DBG("SETUP WAS CALLED");
 
+	pkt = net_pkt_get_tx(context, K_FOREVER);
+	if (!pkt) {
+		return -ENOMEM;
+	}
+
+	frag = net_pkt_get_data(context, K_FOREVER);
+	if (!frag) {
+		return -ENOMEM;
+	}
 	id = srtsp_header_get_id(&req);
  	r = srtsp_packet_init(&response, pkt, 1, SRTSP_TYPE_ACK,
  			     0, NULL, SRTSP_RESPONSE_CODE_OK, id);
@@ -433,6 +442,9 @@ static int setup(struct srtsp_resource *resource,
  		return -EINVAL;
  	}*/
 
+
+	net_pkt_frag_add(pkt, frag);
+
  	get_from_ip_addr(&req, &from);
  	r = net_context_sendto(pkt, (const struct sockaddr *)&from,
  			       sizeof(struct sockaddr_in6),
@@ -452,12 +464,18 @@ static int teardown(struct srtsp_resource *resource,
 	struct net_buf *frag;
 	struct sockaddr_in6 from;
 	struct srtsp_packet response;
-	const char *str;
-	u8_t payload;
-	u8_t len;
 	u16_t id;
-	u16_t offset;
 	int r;
+
+	pkt = net_pkt_get_tx(context, K_FOREVER);
+	if (!pkt) {
+		return -ENOMEM;
+	}
+
+	frag = net_pkt_get_data(context, K_FOREVER);
+	if (!frag) {
+		return -ENOMEM;
+	}
 
 	id = srtsp_header_get_id(&req);
  	r = srtsp_packet_init(&response, pkt, 1, SRTSP_TYPE_ACK,
@@ -495,8 +513,6 @@ static int teardown(struct srtsp_resource *resource,
 }
 
 
-
-
 static const char * const led_default_path[] = { "led", NULL };
 static const char * const led_default_attributes[] = {
 	"title=\"LED\"",
@@ -523,8 +539,6 @@ static struct srtsp_resource resources[] = {
 			  .attributes = led_default_attributes,
 			}),
 	},
-
-	{ },
 };
 
 static void udp_receive(struct net_context *context,
@@ -535,7 +549,8 @@ static void udp_receive(struct net_context *context,
 	struct srtsp_packet request;
 	struct srtsp_option options[16] = { 0 };
 	u8_t opt_num = 16;
-	int r;
+	int r = -1;
+	SYS_LOG_DBG("UDP RECEIVE CALLED");
 
 	r = srtsp_packet_parse(&request, pkt, options, opt_num);
 	if (r < 0) {
@@ -600,7 +615,7 @@ void main(void)
 		.sin6_addr = IN6ADDR_ANY_INIT,
 		.sin6_port = htons(MY_SRTSP_PORT) };
 	int r;
-
+	SYS_LOG_DBG("MAIN STARTED");
 	led0 = device_get_binding(LED_GPIO_NAME);
 	/* Want it to be NULL if not available */
 

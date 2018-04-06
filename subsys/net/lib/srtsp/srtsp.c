@@ -35,7 +35,7 @@ struct option_context {
 #define SRTSP_MARKER 0xFF //TODO: change this to be different than CoAP
 
 #define BASIC_HEADER_SIZE 4
-#define TIMESTAMP_SIZE 4
+
 
 #define PKT_WAIT_TIME K_SECONDS(1)
 
@@ -55,6 +55,8 @@ struct option_context {
 #define SRTSP_OPTION_EXT_14 14
 #define SRTSP_OPTION_EXT_15 15
 #define SRTSP_OPTION_EXT_269 269
+
+const u8_t TIMESTAMP_SIZE = 4;
 
 static u8_t option_header_get_delta(u8_t opt)
 {
@@ -154,7 +156,7 @@ static int parse_option(const struct srtsp_packet *cpkt,
 	u16_t len;
 	u8_t opt;
 	int r;
-
+	SYS_LOG_DBG("PARSE OPTION CALLED");
 	context->frag = net_frag_read_u8(context->frag,
 					 context->offset,
 					 &context->offset,
@@ -264,6 +266,7 @@ static int parse_options(const struct srtsp_packet *cpkt,
 	u16_t opt_len;
 	u8_t num;
 	int r;
+	SYS_LOG_DBG("PARSE OPTIONS CALLED");
 
 	/* Skip CoAP header */
 	context.frag = net_frag_skip(cpkt->frag, cpkt->offset,
@@ -300,7 +303,7 @@ u8_t get_header_reserved_bits(const struct srtsp_packet *cpkt)
 	struct net_buf *frag;
 	u16_t offset;
 	u8_t res_bits;
-
+	SYS_LOG_DBG("GET RES BITS CALLED");
 	frag = net_frag_read_u8(cpkt->frag, cpkt->offset, &offset, &res_bits);
 
 	return res_bits & 0xF;
@@ -323,7 +326,8 @@ static u16_t get_pkt_len(const struct srtsp_packet *cpkt)
 //where the first changes need to be made. Need to lock down header structure
 static int get_header_len(struct srtsp_packet *cpkt)
 {
-	u8_t res_bits;
+	SYS_LOG_DBG("GET HEADER LEN CALLED");
+	//u8_t res_bits;
 	u16_t len;
 	int hdrlen;
 
@@ -354,7 +358,7 @@ int srtsp_packet_parse(struct srtsp_packet *cpkt, struct net_pkt *pkt,
 		      struct srtsp_option *options, u8_t opt_num)
 {
 	int ret;
-
+	SYS_LOG_DBG("PACKET PARSE CALLED");
 	if (!cpkt || !pkt || !pkt->frags) {
 		return -EINVAL;
 	}
@@ -417,7 +421,8 @@ int srtsp_packet_init(struct srtsp_packet *cpkt, struct net_pkt *pkt,
 	net_pkt_append_u8(pkt, hdr);
 	net_pkt_append_u8(pkt, code);
 	net_pkt_append_be16(pkt, id);
-	u32_t time_stamp = get_timestamp();
+	u32_t temp = get_timestamp();
+	u8_t * time_stamp = (u8_t*) &temp;
 	if(time_stamp) {
 		res = net_pkt_append_all(pkt, TIMESTAMP_SIZE, time_stamp, PKT_WAIT_TIME);
 		if (!res) {
@@ -638,16 +643,22 @@ static bool uri_path_eq(const struct srtsp_packet *cpkt,
 static srtsp_method_t method_from_code(const struct srtsp_resource *resource,
 				      u8_t code)
 {
+	SYS_LOG_DBG("METHOD FROM CODE CALLED");
 	switch (code) {
 	case SRTSP_METHOD_SETUP:
+		SYS_LOG_DBG("METHOD: SETUP");
 		return resource->setup;
 	case SRTSP_METHOD_PLAY:
+	SYS_LOG_DBG("METHOD: PLAY");
 		return resource->play;
 	case SRTSP_METHOD_PAUSE:
+	SYS_LOG_DBG("METHOD: PAUSE");
 		return resource->pause;
 	case SRTSP_METHOD_TEARDOWN:
+	SYS_LOG_DBG("METHOD: TEARDOWN");
 		return resource->teardown;
 	default:
+		SYS_LOG_DBG("METHOD: NULL");
 		return NULL;
 	}
 }
@@ -680,7 +691,7 @@ int srtsp_handle_request(struct srtsp_packet *cpkt,
 	for (resource = resources; resource && resource->path; resource++) {
 		srtsp_method_t method;
 		u8_t code;
-
+		SYS_LOG_DBG("we're in the looop");
 		//if not the right uri path, skip to next loop iteration
 		if (!uri_path_eq(cpkt, resource->path, options, opt_num)) {
 			continue;

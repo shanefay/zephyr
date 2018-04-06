@@ -476,7 +476,7 @@ static void udp_receive(struct net_context *context,
 	struct coap_option options[16] = { 0 };
 	u8_t opt_num = 16;
 	int r;
-
+	SYS_LOG_DBG("UDP RECEIVE CALLED");
 	r = coap_packet_parse(&request, pkt, options, opt_num);
 	if (r < 0) {
 		NET_ERR("Invalid data received (%d)\n", r);
