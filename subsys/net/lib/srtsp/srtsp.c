@@ -359,6 +359,7 @@ int srtsp_packet_parse(struct srtsp_packet *cpkt, struct net_pkt *pkt,
 {
 	int ret;
 	SYS_LOG_DBG("PACKET PARSE CALLED");
+	printk("srtsp_packet_parse()\n");
 	if (!cpkt || !pkt || !pkt->frags) {
 		return -EINVAL;
 	}
@@ -682,7 +683,7 @@ int srtsp_handle_request(struct srtsp_packet *cpkt,
 			u8_t opt_num)
 {
 	struct srtsp_resource *resource;
-
+	printk("srtsp_handle_request\n");
 	if (!is_request(cpkt)) {
 		return 0;
 	}
@@ -698,6 +699,7 @@ int srtsp_handle_request(struct srtsp_packet *cpkt,
 		}
 
 		code = srtsp_header_get_code(cpkt);
+		printk("Code: %u\n", code);
 		method = method_from_code(resource, code);
 		if (!method) {
 			return 0;
@@ -961,7 +963,8 @@ int srtsp_packet_append_payload(struct srtsp_packet *cpkt, u8_t *payload,
 			       u16_t payload_len)
 {
 	bool status;
-
+	printk("Payload: %u\n", payload);
+	printk("Payload Length: %u", payload_len);
 	status = net_pkt_append_all(cpkt->pkt, payload_len, payload,
 				    PKT_WAIT_TIME);
 
