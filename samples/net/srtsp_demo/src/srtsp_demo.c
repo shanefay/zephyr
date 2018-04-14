@@ -35,6 +35,8 @@
 
 
 #define MY_SRTSP_PORT 50000
+#define SOCK_SIZE 24
+
 
 #define ALL_NODES_LOCAL_SRTSP_MCAST					\
 	{ { { 0xff, 0x02, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xfd } } }
@@ -43,6 +45,7 @@
 	{ { { 0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x1 } } }
 
 #define MAX_ACTIVE_CONNECTIONS = 1;
+
 
 #if defined(LED0_GPIO_PORT)
 #define LED_GPIO_NAME LED0_GPIO_PORT
@@ -59,10 +62,6 @@ static struct device *led0;
 static struct srtsp_packet req;
 static struct srtsp_resource rez;
 static struct sockaddr_in6 dest;
-//static struct request *requests[5];
-//static struct resource *resources_in_use[5];
-//static bool states[5];
-//static int active_requests = 0;
 static int seconds = 0;
 
 
@@ -185,7 +184,7 @@ static u8_t* sample_sine()
 void transmit_pkt(struct k_work *work)
 {
 	seconds++;
-
+	printk("Transmit pkt called \n");
 	struct net_pkt *pkt;
 	struct net_buf *frag;
 	struct sockaddr_in6 from;
@@ -207,6 +206,7 @@ void transmit_pkt(struct k_work *work)
 
 
  */
+
  pkt = net_pkt_get_tx(context, K_FOREVER);
  if (!pkt) {
 	 return;
@@ -216,9 +216,9 @@ void transmit_pkt(struct k_work *work)
  if (!frag) {
 	 return;
  }
-
  net_pkt_frag_add(pkt, frag);
  id = srtsp_header_get_id(&req);
+
 	r = srtsp_packet_init(&response, pkt, 1, SRTSP_TYPE_NON_CON,
 			     0, NULL, SRTSP_RESPONSE_CODE_OK, id);
 	if (r < 0) {
@@ -321,8 +321,8 @@ static int play(struct srtsp_resource *resource,
 	if (r < 0) {
 		net_pkt_unref(pkt);
 	}
-	req =  *request;
 	rez = *resource;
+	req = *request;
 	memcpy(&dest, &from, sizeof(struct sockaddr_in6));
 
 
@@ -340,7 +340,7 @@ static int pause(struct srtsp_resource *resource,
 	u16_t id;
 	//u16_t offset;
 	int r;
-
+	printk("pause\n");
 	pkt = net_pkt_get_tx(context, K_FOREVER);
 	if (!pkt) {
 		return -ENOMEM;
@@ -351,8 +351,11 @@ static int pause(struct srtsp_resource *resource,
 		return -ENOMEM;
 	}
 	id = srtsp_header_get_id(&req);
+	net_pkt_frag_add(pkt, frag);
+	printk("frag added\n");
  	r = srtsp_packet_init(&response, pkt, 1, SRTSP_TYPE_ACK,
  			     0, NULL, SRTSP_RESPONSE_CODE_OK, id);
+	printk("init\n");
  	if (r < 0) {
  		return -EINVAL;
  	}
@@ -371,17 +374,19 @@ static int pause(struct srtsp_resource *resource,
  	}*/
 
 
-	net_pkt_frag_add(pkt, frag);
+
 
  	get_from_ip_addr(&req, &from);
  	r = net_context_sendto(pkt, (const struct sockaddr *)&from,
  			       sizeof(struct sockaddr_in6),
  			       NULL, 0, NULL, NULL);
+	printk("sent\n");
  	if (r < 0) {
  		net_pkt_unref(pkt);
  	}
 
 	k_timer_stop(&timer);
+	printk("timer paused\n");
 	return r;
 }
 
@@ -434,7 +439,6 @@ static int setup(struct srtsp_resource *resource,
  	r = net_context_sendto(pkt, (const struct sockaddr *)&from,
  			       sizeof(struct sockaddr_in6),
  			       NULL, 0, NULL, NULL);
-  printk("R: %u\n", r);
  	if (r < 0) {
  		net_pkt_unref(pkt);
  	}
@@ -464,8 +468,10 @@ static int teardown(struct srtsp_resource *resource,
 	}
 
 	id = srtsp_header_get_id(&req);
+	net_pkt_frag_add(pkt, frag);
  	r = srtsp_packet_init(&response, pkt, 1, SRTSP_TYPE_ACK,
  			     0, NULL, SRTSP_RESPONSE_CODE_OK, id);
+	printk("finised init\n");
  	if (r < 0) {
  		return -EINVAL;
  	}
@@ -487,11 +493,15 @@ static int teardown(struct srtsp_resource *resource,
  	r = net_context_sendto(pkt, (const struct sockaddr *)&from,
  			       sizeof(struct sockaddr_in6),
  			       NULL, 0, NULL, NULL);
+	printk("packet sent\n");
  	if (r < 0) {
  		net_pkt_unref(pkt);
  	}
 	k_timer_stop(&timer);
-
+	printk("timer stopped\n");
+	//k_free(&req);
+	k_free(&dest);
+	printk("globals freed\n");
 
 	//req = NULL;
 	//rez = NULL;

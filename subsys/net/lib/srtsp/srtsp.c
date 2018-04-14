@@ -404,8 +404,9 @@ int srtsp_packet_init(struct srtsp_packet *cpkt, struct net_pkt *pkt,
 {
 	u8_t hdr;
 	bool res;
-
+  printk("in init\n");
 	if (!cpkt || !pkt || !pkt->frags) {
+		printk("something didnt pass in right\n");
 		return -EINVAL;
 	}
 
@@ -654,9 +655,11 @@ static srtsp_method_t method_from_code(const struct srtsp_resource *resource,
 		return resource->play;
 	case SRTSP_METHOD_PAUSE:
 	SYS_LOG_DBG("METHOD: PAUSE");
+		printk("pause method\n");
 		return resource->pause;
 	case SRTSP_METHOD_TEARDOWN:
 	SYS_LOG_DBG("METHOD: TEARDOWN");
+		printk("teardown method\n");
 		return resource->teardown;
 	default:
 		SYS_LOG_DBG("METHOD: NULL");
@@ -692,7 +695,6 @@ int srtsp_handle_request(struct srtsp_packet *cpkt,
 	for (resource = resources; resource && resource->path; resource++) {
 		srtsp_method_t method;
 		u8_t code;
-		SYS_LOG_DBG("we're in the looop");
 		//if not the right uri path, skip to next loop iteration
 		if (!uri_path_eq(cpkt, resource->path, options, opt_num)) {
 			continue;
@@ -707,7 +709,6 @@ int srtsp_handle_request(struct srtsp_packet *cpkt,
 
 		return method(resource, cpkt);
 	}
-
 	return -ENOENT;
 }
 
@@ -1269,7 +1270,6 @@ u16_t srtsp_header_get_id(const struct srtsp_packet *cpkt)
 	struct net_buf *frag;
 	u16_t offset;
 	u16_t id;
-
 	frag = net_frag_skip(cpkt->frag, cpkt->offset, &offset, 2);
 	frag = net_frag_read_be16(frag, offset, &offset, &id);
 	if (!frag && offset == 0xffff) {

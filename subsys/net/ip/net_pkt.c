@@ -1302,13 +1302,12 @@ struct net_buf *net_frag_read(struct net_buf *frag, u16_t offset,
 			      u16_t *pos, u16_t len, u8_t *data)
 {
 	u16_t copy = 0;
-
 	frag = adjust_offset(frag, offset, pos);
 	if (!frag) {
 		goto error;
 	}
-
 	while (len-- > 0 && frag) {
+
 		if (data) {
 			frag = net_frag_read_byte(frag, *pos,
 						  pos, data + copy++);
