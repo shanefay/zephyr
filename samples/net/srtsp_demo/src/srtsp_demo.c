@@ -114,62 +114,6 @@ static int well_known_core_get(struct srtsp_resource *resource,
 }
 
 
-
-static int dummy_get(struct srtsp_resource *resource,
-		     struct srtsp_packet *request)
-{
-	static const char dummy_str[] = "Just a test\n";
-	struct net_pkt *pkt;
-	struct net_buf *frag;
-	struct sockaddr_in6 from;
-	struct srtsp_packet response;
-	u16_t id;
-	int r;
-
-	id = srtsp_header_get_id(request);
-
-	pkt = net_pkt_get_tx(context, K_FOREVER);
-	if (!pkt) {
-		return -ENOMEM;
-	}
-
-	frag = net_pkt_get_data(context, K_FOREVER);
-	if (!frag) {
-		return -ENOMEM;
-	}
-
-	net_pkt_frag_add(pkt, frag);
-
-	r = srtsp_packet_init(&response, pkt, 1, SRTSP_TYPE_ACK,
-			     0, NULL, SRTSP_RESPONSE_CODE_OK, id);
-	if (r < 0) {
-		return -EINVAL;
-	}
-
-	r = srtsp_packet_append_payload_marker(&response);
-	if (r < 0) {
-		net_pkt_unref(pkt);
-		return -EINVAL;
-	}
-
-	r = srtsp_packet_append_payload(&response, (u8_t *)dummy_str,
-				      sizeof(dummy_str));
-	if (r < 0) {
-		net_pkt_unref(pkt);
-		return -EINVAL;
-	}
-
-	get_from_ip_addr(request, &from);
-	r = net_context_sendto(pkt, (const struct sockaddr *)&from,
-			       sizeof(struct sockaddr_in6),
-			       NULL, 0, NULL, NULL);
-	if (r < 0) {
-		net_pkt_unref(pkt);
-	}
-
-	return r;
-}
-
 static u8_t* sample_sine()
 {
 	if(seconds % 6 < 3){
@@ -184,28 +128,15 @@ static u8_t* sample_sine()
 void transmit_pkt(struct k_work *work)
 {
 	seconds++;
-	printk("Transmit pkt called \n");
 	struct net_pkt *pkt;
 	struct net_buf *frag;
 	struct sockaddr_in6 from;
 	struct srtsp_packet response;
 	u16_t id;
-//	u16_t offset;
+
 	int r;
 
-	/*frag = net_frag_skip(request->frag, request->offset, &offset,
-			     request->hdr_len + request->opt_len);
-	if (!frag && offset == 0xffff) {
-		return -EINVAL;
-	}
 
-	frag = net_frag_read_u8(frag, offset, &offset, &payload);
-	if (!frag && offset == 0xffff) {
-		printk("packet without payload, so start streaming to them");
-	} // check here if payload becomes relevant
-
-
- */
 
  pkt = net_pkt_get_tx(context, K_FOREVER);
  if (!pkt) {
@@ -277,7 +208,7 @@ static int play(struct srtsp_resource *resource,
 
 	frag = net_frag_read_u8(frag, offset, &offset, &payload);
 	if (!frag && offset == 0xffff) {
-		printk("packet without payload, so start streaming to them");
+		printk("packet without payload, so start streaming to them\n");
 
 	} // check here if payload becomes relevant
 
@@ -300,19 +231,6 @@ static int play(struct srtsp_resource *resource,
 	if (r < 0) {
 		return -EINVAL;
 	}
-
-	/*r = srtsp_packet_append_payload_marker(&response);
-	if (r < 0) {
-		net_pkt_unref(pkt);
-		return -EINVAL;
-	}
-
-	r = srtsp_(&response, (u8_t *)dummy_str,
-				      sizeof(dummy_str));
-	if (r < 0) {
-		net_pkt_unref(pkt);
-		return -EINVAL;
-	}*/
 
 	get_from_ip_addr(request, &from);
 	r = net_context_sendto(pkt, (const struct sockaddr *)&from,
@@ -340,7 +258,6 @@ static int pause(struct srtsp_resource *resource,
 	u16_t id;
 	//u16_t offset;
 	int r;
-	printk("pause\n");
 	pkt = net_pkt_get_tx(context, K_FOREVER);
 	if (!pkt) {
 		return -ENOMEM;
@@ -352,41 +269,25 @@ static int pause(struct srtsp_resource *resource,
 	}
 	id = srtsp_header_get_id(&req);
 	net_pkt_frag_add(pkt, frag);
-	printk("frag added\n");
+
  	r = srtsp_packet_init(&response, pkt, 1, SRTSP_TYPE_ACK,
  			     0, NULL, SRTSP_RESPONSE_CODE_OK, id);
-	printk("init\n");
+
  	if (r < 0) {
  		return -EINVAL;
  	}
-
- 	/*r = srtsp_packet_append_payload_marker(&response);
- 	if (r < 0) {
- 		net_pkt_unref(pkt);
- 		return -EINVAL;
- 	}
-
- 	r = srtsp_packet_append_payload(&response, (int *)value
- 				      sizeof(value));
- 	if (r < 0) {
- 		net_pkt_unref(pkt);
- 		return -EINVAL;
- 	}*/
-
-
-
 
  	get_from_ip_addr(&req, &from);
  	r = net_context_sendto(pkt, (const struct sockaddr *)&from,
  			       sizeof(struct sockaddr_in6),
  			       NULL, 0, NULL, NULL);
-	printk("sent\n");
+
  	if (r < 0) {
  		net_pkt_unref(pkt);
  	}
 
 	k_timer_stop(&timer);
-	printk("timer paused\n");
+
 	return r;
 }
 
@@ -399,7 +300,6 @@ static int setup(struct srtsp_resource *resource,
 	struct srtsp_packet response;
 	u16_t id;
 	int r;
-	printk("setup\n");
 
 	pkt = net_pkt_get_tx(context, K_FOREVER);
 	if (!pkt) {
@@ -418,21 +318,6 @@ static int setup(struct srtsp_resource *resource,
  	if (r < 0) {
  		return -EINVAL;
  	}
-
- /*	r = srtsp_packet_append_payload_marker(&response);
- 	if (r < 0) {
- 		net_pkt_unref(pkt);
- 		return -EINVAL;
- 	}
-
- 	r = srtsp_packet_append_payload(&response, (u8_t *)value,
- 				      sizeof(value));
- 	if (r < 0) {
- 		net_pkt_unref(pkt);
- 		return -EINVAL;
- 	}*/
-
-
 
 
  	get_from_ip_addr(request, &from);
@@ -471,40 +356,23 @@ static int teardown(struct srtsp_resource *resource,
 	net_pkt_frag_add(pkt, frag);
  	r = srtsp_packet_init(&response, pkt, 1, SRTSP_TYPE_ACK,
  			     0, NULL, SRTSP_RESPONSE_CODE_OK, id);
-	printk("finised init\n");
  	if (r < 0) {
  		return -EINVAL;
  	}
 
- 	/*r = srtsp_packet_append_payload_marker(&response);
- 	if (r < 0) {
- 		net_pkt_unref(pkt);
- 		return -EINVAL;
- 	}
-
- 	r = srtsp_packet_append_payload(&response, (int *)value
- 				      sizeof(value));
- 	if (r < 0) {
- 		net_pkt_unref(pkt);
- 		return -EINVAL;
- 	}*/
 
  	get_from_ip_addr(&req, &from);
  	r = net_context_sendto(pkt, (const struct sockaddr *)&from,
  			       sizeof(struct sockaddr_in6),
  			       NULL, 0, NULL, NULL);
-	printk("packet sent\n");
+
  	if (r < 0) {
  		net_pkt_unref(pkt);
  	}
 	k_timer_stop(&timer);
-	printk("timer stopped\n");
 	//k_free(&req);
-	k_free(&dest);
-	printk("globals freed\n");
+	//k_free(&dest);
 
-	//req = NULL;
-	//rez = NULL;
 	return r;
 }
 

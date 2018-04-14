@@ -404,9 +404,9 @@ int srtsp_packet_init(struct srtsp_packet *cpkt, struct net_pkt *pkt,
 {
 	u8_t hdr;
 	bool res;
-  printk("in init\n");
+
 	if (!cpkt || !pkt || !pkt->frags) {
-		printk("something didnt pass in right\n");
+
 		return -EINVAL;
 	}
 
@@ -645,21 +645,16 @@ static bool uri_path_eq(const struct srtsp_packet *cpkt,
 static srtsp_method_t method_from_code(const struct srtsp_resource *resource,
 				      u8_t code)
 {
-	SYS_LOG_DBG("METHOD FROM CODE CALLED");
+
 	switch (code) {
 	case SRTSP_METHOD_SETUP:
-		SYS_LOG_DBG("METHOD: SETUP");
 		return resource->setup;
 	case SRTSP_METHOD_PLAY:
-	SYS_LOG_DBG("METHOD: PLAY");
 		return resource->play;
 	case SRTSP_METHOD_PAUSE:
-	SYS_LOG_DBG("METHOD: PAUSE");
-		printk("pause method\n");
 		return resource->pause;
 	case SRTSP_METHOD_TEARDOWN:
-	SYS_LOG_DBG("METHOD: TEARDOWN");
-		printk("teardown method\n");
+
 		return resource->teardown;
 	default:
 		SYS_LOG_DBG("METHOD: NULL");
@@ -965,7 +960,7 @@ int srtsp_packet_append_payload(struct srtsp_packet *cpkt, u8_t *payload,
 {
 	bool status;
 	printk("Payload: %u\n", payload);
-	printk("Payload Length: %u", payload_len);
+	printk("Payload Length: %u\n", payload_len);
 	status = net_pkt_append_all(cpkt->pkt, payload_len, payload,
 				    PKT_WAIT_TIME);
 
